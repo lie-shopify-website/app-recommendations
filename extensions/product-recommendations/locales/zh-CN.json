@@ -8,5 +8,7 @@
   "addToOrder": "加入订单",
   "cannotAddToCart": "当前结账流程无法添加商品",
   "editorAddDisabled": "仅预览",
-  "recommendationsCarouselLabel": "推荐商品，可横向滑动浏览"
+  "recommendationsCarouselLabel": "推荐商品，可横向滑动浏览",
+  "recommendationsGridLabel": "推荐商品网格",
+  "chooseVariant": "选择规格"
 }

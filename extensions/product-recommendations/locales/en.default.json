@@ -8,5 +8,7 @@
   "addToOrder": "Add to order",
   "cannotAddToCart": "Adding items is not available in this checkout",
   "editorAddDisabled": "Preview only",
-  "recommendationsCarouselLabel": "Recommended products, swipe horizontally"
+  "recommendationsCarouselLabel": "Recommended products, swipe horizontally",
+  "recommendationsGridLabel": "Recommended products in a grid",
+  "chooseVariant": "Choose option"
 }

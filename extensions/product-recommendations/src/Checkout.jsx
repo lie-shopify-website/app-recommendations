@@ -1,27 +1,164 @@
 import "@shopify/ui-extensions/preact";
-import { useExtensionEditor } from "@shopify/ui-extensions/checkout/preact";
-import { render } from "preact";
-import { useEffect, useState } from "preact/hooks";
 import {
-  EXAMPLE_STATIC_RECOMMENDATIONS,
+  useExtensionEditor,
+  useSettings,
+} from "@shopify/ui-extensions/checkout/preact";
+import { render } from "preact";
+import { useEffect, useMemo, useState } from "preact/hooks";
+import {
+  EDITOR_PREVIEW_RECOMMENDATIONS,
   MAX_COMPLEMENTARY_GIDS_TO_RESOLVE,
+  MAX_RECOMMENDATION_PRODUCTS_DISPLAY,
   PRODUCT_COMPLEMENTARY_METAFIELD_QUERY,
   PRODUCT_NODES_QUERY,
+  COMPLEMENTARY_MANUAL_WEIGHT_OVERRIDES,
   complementaryGidsFromProductData,
   getFallbackProductGidsExcludingCart,
   getOrderedUniqueProductIds,
-  mergeGidLists,
+  mergeComplementaryGidsByWeightRows,
+  parseWeightOverridesJson,
   normalizeNodesToRecommendationCards,
-  orderCardsByGidOrder,
-} from "./recommendations-example.js";
+  orderCardsByGidOrderThenPrice,
+} from "./recommendations.js";
 
-const MAX_VISIBLE_RECOMMENDATIONS = 16;
+/** 与 RecommendationItem 内 s-box 宽度一致，用于计算横向轨道总宽 */
+const RECOMMENDATION_CARD_INLINE_PX = 172;
+/**
+ * gap="base" 在结账扩展里约对应 16px；用于估算轨道宽度，使内容宽于视口从而触发横向滚动。
+ * （官方说明：s-grid 在列未约束时子项可能被压缩，仅靠 repeat 不一定产生溢出。）
+ */
+const CAROUSEL_GAP_BASE_APPROX_PX = 16;
+
+function carouselTrackInlinePx(itemCount) {
+  if (itemCount <= 0) return 0;
+  return (
+    itemCount * RECOMMENDATION_CARD_INLINE_PX +
+    Math.max(0, itemCount - 1) * CAROUSEL_GAP_BASE_APPROX_PX
+  );
+}
 
 export default async () => {
   render(<Extension />, document.body);
 };
 
+function RecommendationItem({
+  item,
+  i18n,
+  isEditor,
+  canAddCartLine,
+  addingVariantId,
+  onAdd,
+}) {
+  const variants =
+    item.variants?.length > 0
+      ? item.variants
+      : [
+          {
+            variantId: item.variantId,
+            label: "—",
+            priceAmount: item.priceAmount,
+            currencyCode: item.currencyCode,
+          },
+        ];
+
+  const [selectedId, setSelectedId] = useState(variants[0]?.variantId ?? "");
+
+  useEffect(() => {
+    setSelectedId(variants[0]?.variantId ?? "");
+  }, [item.productId]);
+
+  const selected =
+    variants.find((v) => v.variantId === selectedId) ?? variants[0];
+  const showSelect = variants.length > 1;
+
+  function handleSelectChange(event) {
+    const el = event.currentTarget ?? event.target;
+    const next = el?.value;
+    if (typeof next === "string") setSelectedId(next);
+  }
+
+  return (
+    <s-box inlineSize="172px" minInlineSize="172px">
+      <s-stack gap="small">
+        {item.imageUrl ? (
+          <s-product-thumbnail
+            src={item.imageUrl}
+            alt={item.imageAlt}
+            size="base"
+          />
+        ) : (
+          <s-box
+            inlineSize="100%"
+            blockSize="80px"
+            border="base"
+            borderRadius="base"
+          />
+        )}
+        <s-text type="strong">{item.title}</s-text>
+        {showSelect ? (
+          <s-select
+            label={i18n.translate("chooseVariant")}
+            name={`rec-variant-${item.productId}`}
+            value={selectedId}
+            disabled={isEditor}
+            onChange={handleSelectChange}
+          >
+            {variants.map((v) => (
+              <s-option key={v.variantId} value={v.variantId}>
+                {v.label}
+              </s-option>
+            ))}
+          </s-select>
+        ) : null}
+        <s-text color="subdued">
+          {i18n.formatCurrency(selected.priceAmount, {
+            currency: selected.currencyCode,
+          })}
+        </s-text>
+        <s-button
+          variant="secondary"
+          loading={addingVariantId === selected.variantId}
+          disabled={
+            isEditor ||
+            !canAddCartLine ||
+            addingVariantId === selected.variantId
+          }
+          onClick={() => onAdd(selected.variantId)}
+        >
+          {isEditor
+            ? i18n.translate("editorAddDisabled")
+            : canAddCartLine
+              ? i18n.translate("addToOrder")
+              : i18n.translate("cannotAddToCart")}
+        </s-button>
+      </s-stack>
+    </s-box>
+  );
+}
+
 function Extension() {
+  const settings = useSettings();
+  const merchantWeightJson =
+    typeof settings?.complementary_weight_overrides_json === "string"
+      ? settings.complementary_weight_overrides_json
+      : "";
+  const weightOverrides = useMemo(
+    () => ({
+      ...COMPLEMENTARY_MANUAL_WEIGHT_OVERRIDES,
+      ...parseWeightOverridesJson(merchantWeightJson),
+    }),
+    [merchantWeightJson],
+  );
+
+  const recommendationsLayoutRaw = settings?.recommendations_layout;
+  const recommendationsLayout = useMemo(() => {
+    const s =
+      typeof recommendationsLayoutRaw === "string"
+        ? recommendationsLayoutRaw.trim()
+        : "";
+    return s === "grid" ? "grid" : "carousel";
+  }, [recommendationsLayoutRaw]);
+
   const editor = useExtensionEditor();
   const isEditor = editor?.type === "checkout";
   const lines = shopify.lines.value;
@@ -45,7 +182,7 @@ function Extension() {
 
   useEffect(() => {
     if (isEditor) {
-      setRawRecommendations(EXAMPLE_STATIC_RECOMMENDATIONS);
+      setRawRecommendations(EDITOR_PREVIEW_RECOMMENDATIONS);
       setLoadState("ready");
       setQueryError(null);
       return;
@@ -78,7 +215,7 @@ function Extension() {
             .map((line) => line.merchandise.product.id),
         );
 
-        function fetchOrderedCards(gids) {
+        function fetchOrderedCards(gids, weightByGid) {
           return shopify
             .query(PRODUCT_NODES_QUERY, { variables: { ids: gids } })
             .then(({ data, errors: nodeErrors }) => {
@@ -90,7 +227,11 @@ function Extension() {
                 };
               }
               const cards = normalizeNodesToRecommendationCards(data);
-              const ordered = orderCardsByGidOrder(cards, gids);
+              const ordered = orderCardsByGidOrderThenPrice(
+                cards,
+                gids,
+                weightByGid,
+              );
               return { kind: "ok", ordered };
             });
         }
@@ -114,7 +255,17 @@ function Extension() {
             setLoadState("ready");
             return;
           }
-          return fetchOrderedCards(fb).then(applyFetchResult);
+          const fbRows = mergeComplementaryGidsByWeightRows(
+            [fb],
+            weightOverrides,
+          );
+          const fbWeightByGid = new Map(
+            fbRows.map((r) => [r.gid, r.finalWeight]),
+          );
+          const orderedFb = fbRows.map((r) => r.gid);
+          return fetchOrderedCards(orderedFb, fbWeightByGid).then(
+            applyFetchResult,
+          );
         }
 
         const gidLists = [];
@@ -146,7 +297,17 @@ function Extension() {
         if (allPhase1Failed) {
           const fb = getFallbackProductGidsExcludingCart(cartIdsNow);
           if (fb.length > 0) {
-            return fetchOrderedCards(fb).then(applyFetchResult);
+            const fbRows = mergeComplementaryGidsByWeightRows(
+              [fb],
+              weightOverrides,
+            );
+            const fbWeightByGid = new Map(
+              fbRows.map((r) => [r.gid, r.finalWeight]),
+            );
+            const orderedFb = fbRows.map((r) => r.gid);
+            return fetchOrderedCards(orderedFb, fbWeightByGid).then(
+              applyFetchResult,
+            );
           }
           setQueryError(errorMessages.join(" · "));
           setRawRecommendations([]);
@@ -154,7 +315,14 @@ function Extension() {
           return;
         }
 
-        const mergedGids = mergeGidLists(gidLists);
+        const mergeRows = mergeComplementaryGidsByWeightRows(
+          gidLists,
+          weightOverrides,
+        );
+        const weightByGid = new Map(
+          mergeRows.map((r) => [r.gid, r.finalWeight]),
+        );
+        const mergedGids = mergeRows.map((r) => r.gid);
         const filteredGids = mergedGids
           .filter((gid) => !cartIdsNow.has(gid))
           .slice(0, MAX_COMPLEMENTARY_GIDS_TO_RESOLVE);
@@ -163,7 +331,7 @@ function Extension() {
           return tryFallbackOrEmpty();
         }
 
-        return fetchOrderedCards(filteredGids).then((res) => {
+        return fetchOrderedCards(filteredGids, weightByGid).then((res) => {
           if (!res || res.kind === "cancelled") return;
           if (res.kind === "error") {
             applyFetchResult(res);
@@ -187,11 +355,11 @@ function Extension() {
     return () => {
       cancelled = true;
     };
-  }, [isEditor, sourceIdsKey]);
+  }, [isEditor, sourceIdsKey, weightOverrides]);
 
   const visible = rawRecommendations
     .filter((item) => !cartProductIds.has(item.productId))
-    .slice(0, MAX_VISIBLE_RECOMMENDATIONS);
+    .slice(0, MAX_RECOMMENDATION_PRODUCTS_DISPLAY);
 
   async function addVariant(variantId) {
     if (!canAddCartLine || isEditor) return;
@@ -207,113 +375,116 @@ function Extension() {
     }
   }
 
+  const recommendationsTitle = i18n.translate("recommendationsHeading");
+
   if (loadState === "loading") {
     return (
-      <s-section heading={i18n.translate("recommendationsHeading")}>
+      <s-stack gap="base">
+        <s-heading>{recommendationsTitle}</s-heading>
         <s-stack gap="base" justifyContent="center">
           <s-spinner
             size="large"
             accessibilityLabel={i18n.translate("loadingRecommendations")}
           />
         </s-stack>
-      </s-section>
+      </s-stack>
     );
   }
 
   if (loadState === "empty" && !isEditor) {
     return (
-      <s-banner tone="info" heading={i18n.translate("recommendationsHeading")}>
-        <s-text>{i18n.translate("emptyCartHint")}</s-text>
+      <s-banner tone="info">
+        <s-stack gap="small">
+          <s-heading>{recommendationsTitle}</s-heading>
+          <s-text>{i18n.translate("emptyCartHint")}</s-text>
+        </s-stack>
       </s-banner>
     );
   }
 
   if (loadState === "error") {
     return (
-      <s-banner
-        tone="critical"
-        heading={i18n.translate("recommendationsHeading")}
-      >
-        <s-text>
-          {i18n.translate("recommendationsError", {
-            error: queryError ?? "",
-          })}
-        </s-text>
+      <s-banner tone="critical">
+        <s-stack gap="small">
+          <s-heading>{recommendationsTitle}</s-heading>
+          <s-text>
+            {i18n.translate("recommendationsError", {
+              error: queryError ?? "",
+            })}
+          </s-text>
+        </s-stack>
       </s-banner>
     );
   }
 
   if (visible.length === 0) {
     return (
-      <s-banner tone="info" heading={i18n.translate("recommendationsHeading")}>
-        <s-text>{i18n.translate("noRecommendations")}</s-text>
+      <s-banner tone="info">
+        <s-stack gap="small">
+          <s-heading>{recommendationsTitle}</s-heading>
+          <s-text>{i18n.translate("noRecommendations")}</s-text>
+        </s-stack>
       </s-banner>
     );
   }
 
+  const trackInlinePx = carouselTrackInlinePx(visible.length);
+
+  const recommendationCards = visible.map((item) => (
+    <RecommendationItem
+      key={item.productId}
+      item={item}
+      i18n={i18n}
+      isEditor={isEditor}
+      canAddCartLine={canAddCartLine}
+      addingVariantId={addingVariantId}
+      onAdd={addVariant}
+    />
+  ));
+
   return (
-    <s-section heading={i18n.translate("recommendationsHeading")}>
+    <s-stack gap="base">
+      <s-heading>{recommendationsTitle}</s-heading>
       {isEditor ? (
         <s-banner tone="info">
           <s-text>{i18n.translate("editorPreviewHint")}</s-text>
         </s-banner>
       ) : null}
       <s-stack gap="base">
-        <s-scroll-box
-          inlineSize="100%"
-          accessibilityLabel={i18n.translate("recommendationsCarouselLabel")}
-          overflow="hidden auto"
-        >
-          <s-stack direction="inline" gap="base">
-            {visible.map((item) => (
-              <s-box
-                key={item.productId}
-                inlineSize="152px"
-                minInlineSize="152px"
+        {recommendationsLayout === "grid" ? (
+          <s-grid
+            gap="base"
+            inlineSize="100%"
+            accessibilityLabel={i18n.translate("recommendationsGridLabel")}
+            gridTemplateColumns={`repeat(auto-fill, minmax(${RECOMMENDATION_CARD_INLINE_PX}px, 1fr))`}
+            justifyItems="start"
+          >
+            {recommendationCards}
+          </s-grid>
+        ) : (
+          <s-scroll-box
+            inlineSize="100%"
+            maxInlineSize="100%"
+            minInlineSize="0"
+            accessibilityLabel={i18n.translate("recommendationsCarouselLabel")}
+            overflow="hidden auto"
+          >
+            <s-box
+              inlineSize={`${trackInlinePx}px`}
+              minInlineSize={`${trackInlinePx}px`}
+              padding="none"
+            >
+              <s-grid
+                gap="base"
+                inlineSize={`${trackInlinePx}px`}
+                gridTemplateColumns={`repeat(${visible.length}, ${RECOMMENDATION_CARD_INLINE_PX}px)`}
               >
-                <s-stack gap="small">
-                  {item.imageUrl ? (
-                    <s-product-thumbnail
-                      src={item.imageUrl}
-                      alt={item.imageAlt}
-                      size="base"
-                    />
-                  ) : (
-                    <s-box
-                      inlineSize="100%"
-                      blockSize="80px"
-                      border="base"
-                      borderRadius="base"
-                    />
-                  )}
-                  <s-text type="strong">{item.title}</s-text>
-                  <s-text color="subdued">
-                    {i18n.formatCurrency(item.priceAmount, {
-                      currency: item.currencyCode,
-                    })}
-                  </s-text>
-                  <s-button
-                    variant="secondary"
-                    loading={addingVariantId === item.variantId}
-                    disabled={
-                      isEditor ||
-                      !canAddCartLine ||
-                      addingVariantId === item.variantId
-                    }
-                    onClick={() => addVariant(item.variantId)}
-                  >
-                    {isEditor
-                      ? i18n.translate("editorAddDisabled")
-                      : canAddCartLine
-                        ? i18n.translate("addToOrder")
-                        : i18n.translate("cannotAddToCart")}
-                  </s-button>
-                </s-stack>
-              </s-box>
-            ))}
-          </s-stack>
-        </s-scroll-box>
+                {recommendationCards}
+              </s-grid>
+            </s-box>
+          </s-scroll-box>
+        )}
       </s-stack>
-    </s-section>
+    </s-stack>
   );
 }

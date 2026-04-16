@@ -8,5 +8,7 @@
   "addToOrder": "Ajouter à la commande",
   "cannotAddToCart": "L’ajout d’articles n’est pas disponible dans ce paiement",
   "editorAddDisabled": "Aperçu uniquement",
-  "recommendationsCarouselLabel": "Produits recommandés, faire défiler horizontalement"
+  "recommendationsCarouselLabel": "Produits recommandés, faire défiler horizontalement",
+  "recommendationsGridLabel": "Produits recommandés en grille",
+  "chooseVariant": "Choisir une option"
 }

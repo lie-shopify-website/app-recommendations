@@ -33,9 +33,27 @@ api_access = true
 # your extension. Learn more:
 # https://shopify.dev/docs/api/checkout-ui-extensions/latest/configuration#settings-definition
 
-# [extensions.settings]
-# [[extensions.settings.fields]]
-# key = "banner_title"
-# type = "single_line_text_field"
-# name = "Banner title"
-# description = "Enter a title for the banner"
+[extensions.settings]
+
+[[extensions.settings.fields]]
+key = "complementary_weight_overrides_json"
+type = "multi_line_text_field"
+name = "互补权重覆盖（JSON）"
+description = """
+可选。粘贴一个 JSON 对象：键为 Product GID（格式 gid://shopify/Product/数字ID），值为数字权重。与代码仓库中的默认合并，同键时以本配置为准；留空则仅用默认。
+
+示例（请把 ID 换成你店铺的真实 Product GID，可多行格式化或压成一行均可）：
+{
+  \"gid://shopify/Product/8526784954518\": 15,
+  \"gid://shopify/Product/8526784921750\": 8
+}
+"""
+
+[[extensions.settings.fields]]
+key = "recommendations_layout"
+type = "single_line_text_field"
+name = "推荐展示布局"
+description = "滑动：横向滚动卡片；网格：多列自动换行铺满宽度。未选择时默认滑动。"
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = "[\"carousel\", \"grid\"]"
