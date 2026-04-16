@@ -1,6 +1,12 @@
 {
-  "welcome": "Welcome to the {{target}} extension!",
-  "iWouldLikeAFreeGiftWithMyOrder": "I would like to receive a free gift with my order",
-  "addAFreeGiftToMyOrder": "Add a free gift to my order",
-  "metafieldChangesAreNotSupported": "Cart metafield changes are not supported in this checkout"
+  "recommendationsHeading": "You might also like",
+  "loadingRecommendations": "Loading recommendations",
+  "emptyCartHint": "Add items to your cart to see personalized recommendations.",
+  "recommendationsError": "Could not load recommendations. {{error}}",
+  "noRecommendations": "No recommendations right now.",
+  "editorPreviewHint": "Preview: sample products. Live checkout loads real recommendations from the Storefront API.",
+  "addToOrder": "Add to order",
+  "cannotAddToCart": "Adding items is not available in this checkout",
+  "editorAddDisabled": "Preview only",
+  "recommendationsCarouselLabel": "Recommended products, swipe horizontally"
 }

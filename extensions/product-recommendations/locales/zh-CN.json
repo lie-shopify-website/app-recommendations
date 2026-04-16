@@ -1,0 +1,12 @@
+{
+  "recommendationsHeading": "猜你喜欢",
+  "loadingRecommendations": "正在加载推荐",
+  "emptyCartHint": "请先向购物车添加商品，以便根据当前商品展示推荐。",
+  "recommendationsError": "无法加载推荐。{{error}}",
+  "noRecommendations": "暂时没有推荐商品。",
+  "editorPreviewHint": "预览模式：以下为示例商品；真实结账页会通过 Storefront API 加载推荐。",
+  "addToOrder": "加入订单",
+  "cannotAddToCart": "当前结账流程无法添加商品",
+  "editorAddDisabled": "仅预览",
+  "recommendationsCarouselLabel": "推荐商品，可横向滑动浏览"
+}

@@ -1,6 +1,12 @@
 {
-  "welcome": "Bienvenue dans l'extension {{target}}!",
-  "iWouldLikeAFreeGiftWithMyOrder": "Je souhaite recevoir un cadeau gratuit avec ma commande",
-  "addAFreeGiftToMyOrder": "Ajouter un cadeau gratuit à ma commande",
-  "metafieldChangesAreNotSupported": "Les modifications de métachamps de panier ne sont pas prises en charge dans cette commande"
+  "recommendationsHeading": "Vous aimerez peut-être aussi",
+  "loadingRecommendations": "Chargement des recommandations",
+  "emptyCartHint": "Ajoutez des articles à votre panier pour voir des recommandations personnalisées.",
+  "recommendationsError": "Impossible de charger les recommandations. {{error}}",
+  "noRecommendations": "Aucune recommandation pour le moment.",
+  "editorPreviewHint": "Aperçu : exemples. Le paiement réel charge les recommandations via l’API Storefront.",
+  "addToOrder": "Ajouter à la commande",
+  "cannotAddToCart": "L’ajout d’articles n’est pas disponible dans ce paiement",
+  "editorAddDisabled": "Aperçu uniquement",
+  "recommendationsCarouselLabel": "Produits recommandés, faire défiler horizontalement"
 }
